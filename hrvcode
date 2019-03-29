@@ -90,13 +90,13 @@ void loop ()
     T = thresh;
   }
 
-  if (N > 2500) {                          // se passar 2,5 seg sem batida reseta tudo
+  if (N > 2500) {                          // se passar 2,5 seg sem batimento reseta os valores
     thresh = threshSetting;                // configura o limiar padrão
     P = 512;                               // reseta P padrão
     T = 512;                               // reseta T padrão
     lastBeatTime = now;          // atualiza o tempo da última batida
     firstBeat = true;                      
-    secondBeat = false;                    // se tiver uma nova batida ..
+    secondBeat = false;                    // incrementa ociosidade caso não haja batimento
     idle++;
   }
 
