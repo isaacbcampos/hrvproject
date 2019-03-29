@@ -1,31 +1,32 @@
-#include <SPI.h> 
+#include <SPI.h>  
 #include <SD.h>   
 #include <stdlib.h>  
 const int CS = 10; 
-char dataString[7];
-// all above is about sd card
-const int livingledIBI = LED_BUILTIN;
-int sensorPin = 0;
+// Tudo acima é inclusão de bibliotecas do módulo SD
+char dataString[7]; // configura os caracteres que serão enviados ao SD 
+const int livingledIBI = LED_BUILTIN; // constante do led onboard
+int sensorPin = 0; 
 int Signal = 0;
-int idle = 0;
-double IBI = 600;                  // 600ms per beat = 100 Beats Per Minute (BPM)
-bool  Pulse = false;
+int idle = 0;  
+double IBI = 600;         // padrão de entre intervalo entre batida utilizado p/ detectar batidas
+bool  Pulse = false; 
 int  lastBeatTime = 0;
-double  P = 512;                    // peak at 1/2 the input range of 0..1023
-double  T = 512;                    // trough at 1/2 the input range.
-double  threshSetting = 550;        // used to seed and reset the thresh variable
-double  thresh = 550;     // threshold a little above the trough
-double  amp = 100;                  // beat amplitude 1/10 of input range.
-bool  firstBeat = true;           // looking for the first beat
-bool  secondBeat = false;         // not yet looking for the second beat in a row
-bool debug = false; // change 2 true to see the raw signal
+double  P = 512;                    // configura uma variável de pico para metade do input range
+double  T = 512;                    // configura uma variável de depressão para metade do input range
+double  threshSetting = 500;        // utilizado para resetar o sinal
+double  thresh = 550;     // variável limiar utilizada para achar o pico da onda
+double  amp = 100;                  // variável importante para amplitude do sinal
+bool  firstBeat = true;           // procurando a primeira batida
+bool  secondBeat = false;        
+bool debug = true; // mudar de false para true caso queira ver o sinal bruto
 
 void setup ()
 {
-  pinMode(10, OUTPUT);
+  pinMode(10, OUTPUT); // pino 10 é porta de entrada dos dados 
   Serial.begin(115200);
   Serial.print("Carregando cartao SD...");
   if (!SD.begin(CS))
+// algoritmo para printar na serial se o cartão sd carregar ou não
   {
     Serial.println("Falha no cartao SD!");
     return;
@@ -34,75 +35,68 @@ void setup ()
 }
 void loop ()
 { 
-  Signal = analogRead(sensorPin);
-  //double Signal = analogRead(sensorPin);
-  //Serial.println(rawValue);
-
+  Signal = analogRead(sensorPin); // inicia o loop lendo os inputs vindo da entrada 0
   int now = millis();
 
-  int N = now - lastBeatTime;      // monitor the time since the last beat to avoid noise
+  int N = now - lastBeatTime;      // monitora o tempo desde o último pulso para evitar ruído
 
-  //  find the peak and trough of the pulse wave
-  if (Signal < thresh && N > (IBI / 5) * 3) { // avoid dichrotic noise by waiting 3/5 of last IBI
-    if (Signal < T) {                        // T is the trough
-      T = Signal;                            // keep track of lowest point in pulse wave
+  //  acha o pico e a depressão do pulso
+  if (Signal < thresh && N > (IBI / 5) * 3) { // espera 3/5 do pulso p/ pegar o pico, evita nó dicrótico
+    if (Signal < T) {                        // T é a depressão da onda
+      T = Signal;                            // acompanha o ponto mais baixo da onda
     }
   }
 
-  if (Signal > thresh && Signal > P) {       // thresh condition helps avoid noise
-    P = Signal;                              // P is the peak
-  }                                          // keep track of highest point in pulse wave
+  if (Signal > thresh && Signal > P) {       // thresh auxilia como um filtro para evitar ruido
+    P = Signal;                              //P é o pico onda
+  }                                          // acompanha o pico da onda
 
-  //  NOW IT'S TIME TO LOOK FOR THE HEART BEAT
-  // signal surges up in value every time there is a pulse
-  if (N > 250) {                             // avoid high frequency noise
+  // Agora achando a primeira batida
+  // sinal aumenta em valor toda vez que há um pulso
+  if (N > 250) {                             // evita ruído de alta frequência
     if ( (Signal > thresh) && (Pulse == false) && (N > (IBI / 5) * 3) ) {
-      Pulse = true;                          // set the Pulse flag when we think there is a pulse
-      IBI = now - lastBeatTime;    // measure time between beats in mS
-      lastBeatTime = now;          // keep track of time for next pulse
+      Pulse = true;                          // define uma bandeira de pulso quando pensamos que há um pulso
+      IBI = now - lastBeatTime;    // mede o tempo em ms entre as batidas
+      lastBeatTime = now;          // atualiza o tempo para próxima batida
       idle = 0;
       
-      if(!debug){
+      if(!debug){  //se debug for falso e tiver pulso, cria um arquivo txt, abre e registra o IBI
     
-    dtostrf(IBI,5,2,dataString); //sets IBI to sd
-    File pulsoIsaac = SD.open("pulso.txt", FILE_WRITE); //open pulso.txt 
-    pulsoIsaac.println(dataString); // write IBI to sd
-    pulsoIsaac.close(); // closes pulso.txt and save data
-    
-    //Serial.print(IBI);
-    //Serial.print(",");
+    dtostrf(IBI,5,2,dataString); // formato do ibi no sd
+    File pulsoIsaac = SD.open("pulso.txt", FILE_WRITE); 
+    pulsoIsaac.println(dataString); 
+    pulsoIsaac.close(); // fecha o arquivo e salva o IBI
     Serial.println(dataString);
      
      }
 
-      if (secondBeat) {                      // if this is the second beat, if secondBeat == TRUE
-        secondBeat = false;                  // clear secondBeat flag
+      if (secondBeat) {                      // se houver uma segunda batida limpa a bandeira 
+        secondBeat = false;                
       }
 
-      if (firstBeat) {                       // if it's the first time we found a beat, if firstBeat == TRUE
-        firstBeat = false;                   // clear firstBeat flag
-        secondBeat = true;                   // set the second beat flag
-        // IBI value is unreliable so discard it
+      if (firstBeat) {                       // se acharmos pulso novamente
+        firstBeat = false;                   // limpa a bandeira de primeira batida
+        secondBeat = true;                   // configura a segunda batida
         return;
       }
     }
   }
 
-  if (Signal < thresh && Pulse == true) {  // when the values are going down, the beat is over
-    Pulse = false;                         // reset the Pulse flag so we can do it again
-    amp = P - T;                           // get amplitude of the pulse wave
-    thresh = amp / 2 + T;                  // set thresh at 50% of the amplitude
-    P = thresh;                            // reset these for next time
+  if (Signal < thresh && Pulse == true) {  // quando os valores diminuem o pulso acaba
+    Pulse = false;                         // reseta a bandeira de pulse pra podermos fazer tudo novamente
+    amp = P - T;                           // pega a amplitude da onda
+    thresh = amp / 2 + T;                  // configura o limiar para 50% da amplitude
+    P = thresh;                            // reseta esses pro próximo ciclo
     T = thresh;
   }
 
-  if (N > 2500) {                          // if 2.5 seconds go by without a beat
-    thresh = threshSetting;                // set thresh default
-    P = 512;                               // set P default
-    T = 512;                               // set T default
-    lastBeatTime = now;          // bring the lastBeatTime up to date
-    firstBeat = true;                      // set these to avoid noise
-    secondBeat = false;                    // when we get the heartbeat back
+  if (N > 2500) {                          // se passar 2,5 seg sem batida reseta tudo
+    thresh = threshSetting;                // configura o limiar padrão
+    P = 512;                               // reseta P padrão
+    T = 512;                               // reseta T padrão
+    lastBeatTime = now;          // atualiza o tempo da última batida
+    firstBeat = true;                      
+    secondBeat = false;                    // se tiver uma nova batida ..
     idle++;
   }
 
@@ -110,16 +104,17 @@ void loop ()
     Serial.println("cls");
     idle = 0;
   }
-  
-  if(debug){
+  // algoritmo para visualizar o sinal bruto caso algum bug ocorra
+  if(debug){ 
     Serial.print(Signal);
      Serial.print(",");
     Serial.println(IBI);
   }
-  if(Signal > thresh){                          // If the signal is above "550", then "turn-on" Arduino's LED.
+  if(Signal > thresh){                          //pisca o led assim que houver um batimento
      digitalWrite(livingledIBI,HIGH);
    } else {
-     digitalWrite(livingledIBI,LOW);                //  Else, the sigal must be below "550", so "turn-off" this LED.
+     digitalWrite(livingledIBI,LOW);             
      delay(20);
 }
 }
+
